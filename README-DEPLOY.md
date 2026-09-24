@@ -1,0 +1,88 @@
+# 99win — Vercel Deployment Guide
+
+99win is a real-time multiplayer Aviator-style crash game with an integrated
+wallet, simulated Easypaisa payments, admin panel and an installable Signals
+PWA. It is made of **two deployable pieces**:
+
+| Piece | Location | Runs on |
+|---|---|---|
+| Web app (UI + REST API + admin) | repo root (Next.js 16) | **Vercel** |
+| Game engine (socket.io + signals API) | `mini-services/game-service` | **Render / Railway / Fly.io** (needs a long-running process — serverless platforms cannot host websockets) |
+
+---
+
+## 1. Push the code to GitHub
+
+Unzip, `git init`, commit and push to a new GitHub repository.
+
+```bash
+npm install            # or bun install
+cp .env.example .env   # fill values (see below)
+npx prisma db push     # create the SQLite database
+npm run dev            # http://localhost:3000
+```
+
+## 2. Deploy the game engine first (Render example)
+
+1. Render → **New Web Service** → connect the repo.
+2. Settings:
+   - **Root Directory:** leave empty (repo root)
+   - **Runtime:** Bun (or Node + `npm i -g bun`)
+   - **Build Command:** `bun install && bunx prisma generate`
+   - **Start Command:** `cd mini-services/game-service && GAME_PORT=$PORT SIGNALS_HOST=0.0.0.0 bun index.ts`
+3. Environment variables:
+   - `DATABASE_URL` — a hosted DB (see §4) or `file:/tmp/99win.db` for demo mode
+   - `AUTH_SECRET` — a long random string (must match the web app!)
+   - `SIGNALS_HOST=0.0.0.0`, `SIGNALS_PORT` can stay default
+4. Deploy → note the public URL, e.g. `https://99win-game.onrender.com`
+
+## 3. Deploy the web app (Vercel)
+
+1. Vercel → **Add New Project** → import the repo (framework auto-detected: Next.js).
+2. Environment variables:
+   - `DATABASE_URL=file:/tmp/99win.db` — works instantly; the file resets between
+     serverless instances, so connect a hosted DB for persistence (§4)
+   - `AUTH_SECRET` — **the same value** used on the game service
+   - `NEXT_PUBLIC_GAME_SERVER_URL=https://99win-game.onrender.com`
+   - `SIGNALS_API_URL=https://99win-game.onrender.com`
+3. Deploy → open the app → register → play.
+
+> Admin account is auto-seeded on first login-page visit:
+> **03182772524 / hamza112233** (Admin Panel is inside the profile menu).
+
+## 4. Database persistence (optional but recommended)
+
+SQLite is file-based, so on serverless platforms (`/tmp`) data is ephemeral.
+For persistent balances/transactions use a hosted Postgres-compatible DB:
+
+- **Vercel Postgres / Neon / Supabase** — swap the Prisma datasource to
+  `provider = "postgresql"` in `prisma/schema.prisma`, set the connection
+  string in `DATABASE_URL`, run `npx prisma db push`, and redeploy **both**
+  pieces (the game engine shares the same database).
+
+## 5. Signals PWA (mobile install)
+
+1. Log in → profile menu → **Admin Panel** → **Signals App** tab → *Open Signals App*.
+2. In the Signals app press **Install App** (Android Chrome shows an install
+   prompt; iOS: Share → *Add to Home Screen*).
+3. The next-round signal updates automatically every round — no refresh needed.
+
+## 6. Game economy knobs
+
+- House edge / probability engine: `mini-services/game-service/config.ts`
+  (`HOUSE_EDGE`, `INSTANT_CRASH_CHANCE`, `MAX_CRASH`) — mirrored in
+  `src/lib/fair.ts` (keep both in sync; the Signals engine must match).
+- Round timings, min/max bet, bot counts: same `config.ts` file.
+- Wallet limits & cashback tiers: `src/lib/money.ts`.
+
+## 7. Local development
+
+```bash
+# terminal 1 — web app
+npm run dev                 # port 3000
+
+# terminal 2 — game engine
+bun run mini-services/game-service/index.ts   # port 3003 (socket) + 3004 (signals)
+```
+
+Both pieces must share the same `.env` values (`DATABASE_URL`, `AUTH_SECRET`).
