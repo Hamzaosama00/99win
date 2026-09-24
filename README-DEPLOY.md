@@ -29,11 +29,11 @@ npm run dev            # http://localhost:3000
    - **Root Directory:** leave empty (repo root)
    - **Runtime:** Bun (or Node + `npm i -g bun`)
    - **Build Command:** `bun install && bunx prisma generate`
-   - **Start Command:** `cd mini-services/game-service && GAME_PORT=$PORT SIGNALS_HOST=0.0.0.0 bun index.ts`
+   - **Start Command:** `cd mini-services/game-service && GAME_PORT=$PORT bun index.ts`
 3. Environment variables:
    - `FIREBASE_SERVICE_ACCOUNT_JSON` — Firebase server credential (see FIREBASE-SETUP.md)
    - `AUTH_SECRET` — a long random string (must match the web app!)
-   - `SIGNALS_HOST=0.0.0.0`, `SIGNALS_PORT` can stay default
+   - Do not manually set `PORT`; Render supplies it. The game and Signals API share that single port.
 4. Deploy → note the public URL, e.g. `https://99win-game.onrender.com`
 
 ## 3. Deploy the web app (Vercel)
@@ -46,8 +46,7 @@ npm run dev            # http://localhost:3000
    - `SIGNALS_API_URL=https://99win-game.onrender.com`
 3. Deploy → open the app → register → play.
 
-> Admin account is auto-seeded on first login-page visit:
-> **03182772524 / hamza112233** (Admin Panel is inside the profile menu).
+> Admin account is auto-seeded on the first login/register API call. **Change the hard-coded seed password in `src/lib/seed-admin.ts` before any public launch, and use a private repository.**
 
 ## 4. Firebase database
 
@@ -78,7 +77,7 @@ use this database. The existing admin login is preserved.
 npm run dev                 # port 3000
 
 # terminal 2 — game engine
-bun run mini-services/game-service/index.ts   # port 3003 (socket) + 3004 (signals)
+bun run mini-services/game-service/index.ts   # port 3003 (socket + signals)
 ```
 
 Both pieces must share the same `.env` values (`FIREBASE_SERVICE_ACCOUNT_JSON`, `AUTH_SECRET`).
