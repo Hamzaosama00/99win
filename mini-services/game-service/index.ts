@@ -1,6 +1,6 @@
 import { createServer } from 'http'
 import { Server } from 'socket.io'
-import { PrismaClient } from '@prisma/client'
+import { db } from '../../src/lib/db'
 import fs from 'node:fs'
 import path from 'node:path'
 import { verifyToken } from '../../src/lib/auth'
@@ -8,14 +8,17 @@ import { GameEngine } from './engine'
 import { CONFIG } from './config'
 import { signalFor } from '../../src/lib/fair'
 
-// ---- env bootstrap (DATABASE_URL from project root .env) ----
-if (!process.env.DATABASE_URL) {
+// ---- env bootstrap (Firebase server credential from project root .env) ----
+if (!process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
   try {
     const envPath = path.resolve(import.meta.dir, '../../.env')
     if (fs.existsSync(envPath)) {
       for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
         const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/)
-        if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim()
+        if (m && !process.env[m[1]]) {
+          const value = m[2].trim()
+          process.env[m[1]] = /^(['"]).*\1$/.test(value) ? value.slice(1, -1) : value
+        }
       }
     }
   } catch (e) {
@@ -23,14 +26,13 @@ if (!process.env.DATABASE_URL) {
   }
 }
 
-const db = new PrismaClient()
 
 // ---- stale bet cleanup (server restarted mid-flight → refund) ----
 async function cleanupStaleBets() {
   const stale = await db.bet.findMany({ where: { status: 'ACTIVE' } })
   for (const b of stale) {
     await db.$transaction([
-      db.bet.update({ where: { id: b.id }, data: { status: 'CANCELLED' } }),
+      db.bet.update({ where: { id: b.id, status: 'ACTIVE' }, data: { status: 'CANCELLED' } }),
       db.user.update({ where: { id: b.userId }, data: { balance: { increment: b.amount } } }),
     ])
     console.log(`[99win] refunded stale bet ${b.id}`)

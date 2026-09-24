@@ -1,5 +1,5 @@
 import type { Server } from 'socket.io'
-import type { PrismaClient } from '@prisma/client'
+import type { DatabaseClient } from '../../src/lib/firebase-store'
 import { CONFIG } from './config'
 import { multiplierAt, floor2, payoutFor } from './crash'
 import { globalCrashFor, crashForRound } from '../../src/lib/fair'
@@ -62,7 +62,7 @@ const uidHue = (uid: string) => {
 
 export class GameEngine {
   io: Server
-  db: PrismaClient
+  db: DatabaseClient
 
   phase: Phase = 'WAITING'
   roundId = 1000
@@ -80,7 +80,7 @@ export class GameEngine {
   private mainTimer: ReturnType<typeof setTimeout> | null = null
   private tickTimer: ReturnType<typeof setInterval> | null = null
 
-  constructor(io: Server, db: PrismaClient) {
+  constructor(io: Server, db: DatabaseClient) {
     this.io = io
     this.db = db
     this.startWaiting()
@@ -227,7 +227,7 @@ export class GameEngine {
     this.db
       .$transaction([
         this.db.bet.update({
-          where: { id: e.betId },
+          where: { id: e.betId, status: 'ACTIVE' },
           data: { status: 'CASHED_OUT', cashedOutAt: m, winAmount: win },
         }),
         this.db.user.update({
@@ -263,7 +263,7 @@ export class GameEngine {
     this.db
       .$transaction([
         this.db.bet.update({
-          where: { id: e.betId },
+          where: { id: e.betId, status: 'ACTIVE' },
           data: { status: 'CRASHED' },
         }),
         this.db.user.update({
@@ -411,7 +411,7 @@ export class GameEngine {
     this.entries.delete(uid)
     try {
       const [, u] = await this.db.$transaction([
-        this.db.bet.update({ where: { id: e.betId }, data: { status: 'CANCELLED' } }),
+        this.db.bet.update({ where: { id: e.betId, status: 'ACTIVE' }, data: { status: 'CANCELLED' } }),
         this.db.user.update({ where: { id: uid }, data: { balance: { increment: e.amount } } }),
       ])
       this.io.emit('bets:remove', { betId: e.betId })
