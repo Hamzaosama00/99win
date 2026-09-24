@@ -18,7 +18,7 @@ export async function GET(req: Request) {
   try {
     const token = extractToken(req) || ''
     const base =
-      process.env.SIGNALS_API_URL || 'http://127.0.0.1:3004'
+      process.env.SIGNALS_API_URL || 'http://127.0.0.1:3003'
     const res = await fetch(
       `${base}/signal?rounds=14&token=${encodeURIComponent(token)}`,
       { cache: 'no-store', signal: AbortSignal.timeout(3500) }

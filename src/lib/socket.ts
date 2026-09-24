@@ -19,7 +19,7 @@ export function getSocket(token: string | null): Socket {
   if (socket && socket.connected) return socket
   socket?.disconnect()
   socket = io(GAME_SERVER_URL || '/?XTransformPort=3003', {
-    path: '/',
+    path: '/socket.io/',
     transports: ['websocket', 'polling'],
     auth: { token },
     forceNew: true,
