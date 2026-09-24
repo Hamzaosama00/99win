@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   Lock, Copy, ShieldCheck, QrCode, ChevronLeft, Loader2,
@@ -19,69 +19,7 @@ import { api } from '@/lib/api'
 import { DEPOSIT_PRESETS, cashbackPercent, cashbackAmount, formatMoney } from '@/lib/money'
 import { cn } from '@/lib/utils'
 
-/** Deterministic decorative QR placeholder (simulated payment — no real QR). */
-function FakeQR({ seed, size = 148 }: { seed: string; size?: number }) {
-  const cells = 21
-  const bits = useMemo(() => {
-    let h = 2166136261
-    for (let i = 0; i < seed.length; i++) {
-      h ^= seed.charCodeAt(i)
-      h = Math.imul(h, 16777619)
-    }
-    const arr: boolean[] = []
-    let x = h >>> 0
-    for (let i = 0; i < cells * cells; i++) {
-      x ^= x << 13
-      x ^= x >>> 17
-      x ^= x << 5
-      x >>>= 0
-      arr.push((x & 1) === 1)
-    }
-    return arr
-  }, [seed])
-
-  const isFinder = (r: number, c: number) => {
-    const inBox = (r0: number, c0: number) =>
-      r >= r0 && r < r0 + 7 && c >= c0 && c < c0 + 7
-    return inBox(0, 0) || inBox(0, cells - 7) || inBox(cells - 7, 0)
-  }
-  const finderFill = (r: number, c: number) => {
-    const boxes: Array<[number, number]> = [[0, 0], [0, cells - 7], [cells - 7, 0]]
-    for (const [r0, c0] of boxes) {
-      if (r >= r0 && r < r0 + 7 && c >= c0 && c < c0 + 7) {
-        const rr = r - r0
-        const cc = c - c0
-        const ring = Math.max(Math.abs(rr - 3), Math.abs(cc - 3))
-        return ring === 3 || ring <= 1
-      }
-    }
-    return false
-  }
-
-  const unit = size / cells
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="rounded-lg">
-      <rect width={size} height={size} fill="white" />
-      {Array.from({ length: cells }).map((_, r) =>
-        Array.from({ length: cells }).map((__, c) => {
-          if (isFinder(r, c) && !finderFill(r, c)) return null
-          const on = isFinder(r, c) ? finderFill(r, c) : bits[r * cells + c]
-          if (!on) return null
-          return (
-            <rect
-              key={`${r}-${c}`}
-              x={c * unit}
-              y={r * unit}
-              width={unit}
-              height={unit}
-              fill="#0a0c10"
-            />
-          )
-        })
-      )}
-    </svg>
-  )
-}
+const PAYMENT_QR_URL = '/payment-qr.jpeg'
 
 export default function DepositModal() {
   const dispatch = useAppDispatch()
@@ -91,7 +29,6 @@ export default function DepositModal() {
   const [custom, setCustom] = useState('')
   const [txnId, setTxnId] = useState('')
   const [busy, setBusy] = useState(false)
-  const qrBoxRef = useRef<HTMLDivElement>(null)
 
   const merchant = {
     name: '99WIN OFFICIAL',
@@ -109,36 +46,6 @@ export default function DepositModal() {
     setStep(1)
     setTxnId('')
     setCustom('')
-  }
-
-  /** Serialize the QR SVG → PNG and download it for Easypaisa gallery scanning. */
-  async function downloadQR() {
-    const svg = qrBoxRef.current?.querySelector('svg')
-    if (!svg) return
-    try {
-      const xml = new XMLSerializer().serializeToString(svg)
-      const img = new Image()
-      await new Promise<void>((res, rej) => {
-        img.onload = () => res()
-        img.onerror = () => rej(new Error('render failed'))
-        img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(xml)
-      })
-      const size = 560
-      const canvas = document.createElement('canvas')
-      canvas.width = size
-      canvas.height = size
-      const ctx = canvas.getContext('2d')!
-      ctx.fillStyle = '#ffffff'
-      ctx.fillRect(0, 0, size, size)
-      ctx.drawImage(img, 24, 24, size - 48, size - 48)
-      const a = document.createElement('a')
-      a.href = canvas.toDataURL('image/png')
-      a.download = `99win-easypaisa-qr-${amt || 1000}.png`
-      a.click()
-      toast.success('QR code downloaded. Select it from your gallery inside Easypaisa.')
-    } catch {
-      toast.error('Could not download the QR. Please take a screenshot instead.')
-    }
   }
 
   async function submit() {
@@ -264,10 +171,16 @@ export default function DepositModal() {
           {/* ---------------- STEP 2: payment ---------------- */}
           {step === 2 && (
             <motion.div key="s2" {...fade} className="space-y-4">
-              <div className="flex gap-4">
+              <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
                 <div className="shrink-0 flex flex-col items-center gap-2">
-                  <div ref={qrBoxRef} className="rounded-xl bg-white p-2">
-                    <FakeQR seed={`99win-${amt}-${merchant.phone}`} />
+                  <div className="rounded-xl bg-white p-3">
+                    <img
+                      src={PAYMENT_QR_URL}
+                      alt="Payment QR code — scan with your payment app"
+                      width={650}
+                      height={634}
+                      className="block h-auto w-48 max-w-full"
+                    />
                   </div>
                   <span className="text-[9px] font-bold text-muted-foreground flex items-center gap-1">
                     <QrCode className="h-2.5 w-2.5" /> SCAN TO PAY
@@ -275,14 +188,19 @@ export default function DepositModal() {
                   <Button
                     size="sm"
                     variant="secondary"
-                    onClick={downloadQR}
+                    asChild
                     className="h-8 text-xs font-bold gap-1.5"
                   >
-                    <Download className="h-3.5 w-3.5" /> Download QR
+                    <a href={PAYMENT_QR_URL} download="99win-payment-qr.jpeg">
+                      <Download className="h-3.5 w-3.5" aria-hidden="true" /> Download QR code
+                    </a>
                   </Button>
+                  <a href={PAYMENT_QR_URL} target="_blank" rel="noopener noreferrer" className="text-xs text-muted-foreground underline underline-offset-4">
+                    Open full-size QR
+                  </a>
                 </div>
 
-                <div className="flex-1 min-w-0 space-y-2 text-sm">
+                <div className="w-full flex-1 min-w-0 space-y-2 text-sm">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-muted-foreground text-xs">Amount</span>
                     <span className="font-black text-lg text-gold font-tabular">
@@ -391,7 +309,7 @@ export default function DepositModal() {
 
               <p className="flex items-center justify-center gap-1.5 text-[10px] text-muted-foreground">
                 <ShieldCheck className="h-3 w-3 text-green-500" />
-                256-bit encrypted · Simulated gateway for demo
+                Deposits are credited after admin verification.
               </p>
             </motion.div>
           )}
