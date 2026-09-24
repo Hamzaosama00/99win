@@ -18,7 +18,7 @@ Unzip, `git init`, commit and push to a new GitHub repository.
 ```bash
 npm install            # or bun install
 cp .env.example .env   # fill values (see below)
-npx prisma db push     # create the SQLite database
+npx prisma generate    # generate model types (storage is Firebase)
 npm run dev            # http://localhost:3000
 ```
 
@@ -31,7 +31,7 @@ npm run dev            # http://localhost:3000
    - **Build Command:** `bun install && bunx prisma generate`
    - **Start Command:** `cd mini-services/game-service && GAME_PORT=$PORT SIGNALS_HOST=0.0.0.0 bun index.ts`
 3. Environment variables:
-   - `DATABASE_URL` — a hosted DB (see §4) or `file:/tmp/99win.db` for demo mode
+   - `FIREBASE_SERVICE_ACCOUNT_JSON` — Firebase server credential (see FIREBASE-SETUP.md)
    - `AUTH_SECRET` — a long random string (must match the web app!)
    - `SIGNALS_HOST=0.0.0.0`, `SIGNALS_PORT` can stay default
 4. Deploy → note the public URL, e.g. `https://99win-game.onrender.com`
@@ -40,8 +40,7 @@ npm run dev            # http://localhost:3000
 
 1. Vercel → **Add New Project** → import the repo (framework auto-detected: Next.js).
 2. Environment variables:
-   - `DATABASE_URL=file:/tmp/99win.db` — works instantly; the file resets between
-     serverless instances, so connect a hosted DB for persistence (§4)
+   - `FIREBASE_SERVICE_ACCOUNT_JSON` — the same Firebase server credential used by the game service
    - `AUTH_SECRET` — **the same value** used on the game service
    - `NEXT_PUBLIC_GAME_SERVER_URL=https://99win-game.onrender.com`
    - `SIGNALS_API_URL=https://99win-game.onrender.com`
@@ -50,15 +49,12 @@ npm run dev            # http://localhost:3000
 > Admin account is auto-seeded on first login-page visit:
 > **03182772524 / hamza112233** (Admin Panel is inside the profile menu).
 
-## 4. Database persistence (optional but recommended)
+## 4. Firebase database
 
-SQLite is file-based, so on serverless platforms (`/tmp`) data is ephemeral.
-For persistent balances/transactions use a hosted Postgres-compatible DB:
-
-- **Vercel Postgres / Neon / Supabase** — swap the Prisma datasource to
-  `provider = "postgresql"` in `prisma/schema.prisma`, set the connection
-  string in `DATABASE_URL`, run `npx prisma db push`, and redeploy **both**
-  pieces (the game engine shares the same database).
+Users, wallet records and bets now use Firebase Realtime Database in
+`win-84409`. Follow [FIREBASE-SETUP.md](FIREBASE-SETUP.md) for credentials,
+database rules, verification and migration limitations. Both services must
+use this database. The existing admin login is preserved.
 
 ## 5. Signals PWA (mobile install)
 
@@ -85,4 +81,4 @@ npm run dev                 # port 3000
 bun run mini-services/game-service/index.ts   # port 3003 (socket) + 3004 (signals)
 ```
 
-Both pieces must share the same `.env` values (`DATABASE_URL`, `AUTH_SECRET`).
+Both pieces must share the same `.env` values (`FIREBASE_SERVICE_ACCOUNT_JSON`, `AUTH_SECRET`).
