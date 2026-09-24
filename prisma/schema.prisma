@@ -1,0 +1,62 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// 99win — Users & Wallet
+model User {
+  id            String        @id @default(cuid())
+  phone         String        @unique
+  name          String
+  password      String // scrypt hash (salt:hash)
+  role          String        @default("USER") // USER | ADMIN
+  balance       Float         @default(0)
+  totalDeposit  Float         @default(0)
+  totalWin      Float         @default(0)
+  totalLoss     Float         @default(0)
+  cashbackEarned Float        @default(0)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  transactions  Transaction[]
+  bets          Bet[]
+}
+
+// Transaction log: deposits, withdrawals, cashbacks, bonuses
+model Transaction {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  type        String // DEPOSIT | WITHDRAW | CASHBACK | BONUS
+  amount      Float
+  status      String    @default("PENDING") // PENDING | APPROVED | REJECTED | COMPLETED | CANCELLED
+  method      String? // Easypaisa
+  txnId       String? // user-entered Easypaisa Transaction ID
+  account     String? // withdrawal destination account
+  note        String?
+  createdAt   DateTime  @default(now())
+  processedAt DateTime?
+
+  @@index([userId, createdAt])
+  @@index([status, type])
+}
+
+// Individual game bets (real users only — bots are in-memory)
+model Bet {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  roundId     Int
+  amount      Float
+  crashPoint  Float // personal server-side crash point for this bet
+  cashedOutAt Float? // multiplier captured at cashout
+  winAmount   Float?
+  status      String   @default("ACTIVE") // ACTIVE | CASHED_OUT | CRASHED | CANCELLED
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([roundId])
+}

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 72">
+  <defs>
+    <linearGradient id="plBody" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ff6b7d"/>
+      <stop offset="0.45" stop-color="#e8114b"/>
+      <stop offset="1" stop-color="#a50c3a"/>
+    </linearGradient>
+    <linearGradient id="plWing" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d60f47"/>
+      <stop offset="1" stop-color="#8f0c33"/>
+    </linearGradient>
+    <linearGradient id="plGlass" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#eaf9ff"/>
+      <stop offset="1" stop-color="#8ec9ee"/>
+    </linearGradient>
+  </defs>
+
+  <!-- far wing (behind fuselage, above) -->
+  <path d="M 66 30 C 60 23 52 19 44 17 C 40 16 38 19.5 40 23 C 45 27 54 30 62 32 Z"
+        fill="#8f0c33" opacity="0.92"/>
+
+  <!-- tail fin -->
+  <path d="M 21 36 L 14 10 Q 12.6 5.5 17.5 5.5 L 25 5.5 Q 29 5.5 30.4 9.5 L 34 28 Z"
+        fill="url(#plBody)"/>
+  <path d="M 17 12.5 L 29.5 12.5 L 31 19 L 18.6 19 Z" fill="#f4f6f8" opacity="0.85"/>
+
+  <!-- tailplane -->
+  <path d="M 10 36 L 30 32.5 L 32 40 L 13 43.5 Z" fill="#c50f42"/>
+
+  <!-- fuselage -->
+  <path d="M 22 36
+           C 22 30 29 26.5 40 26
+           L 86 25.5
+           C 97 26 107 30 114.5 36
+           C 107 42.5 97 46.5 86 47
+           L 38 47.5
+           C 28 47.5 22 43 22 36 Z"
+        fill="url(#plBody)"/>
+
+  <!-- white belly stripe -->
+  <path d="M 33 41.5 C 48 44 70 44.5 90 43 C 99 42.3 106 40 111 37.5 C 106 44 97 46.8 87 47 L 38 47.5 C 33.5 47.5 30.5 46 29 43.8 Z"
+        fill="#f4f6f8" opacity="0.92"/>
+
+  <!-- cabin windows -->
+  <circle cx="47" cy="34" r="2.7" fill="#cfeeff" stroke="#8f0c33" stroke-width="1"/>
+  <circle cx="58" cy="33.6" r="2.7" fill="#cfeeff" stroke="#8f0c33" stroke-width="1"/>
+  <circle cx="69" cy="33.3" r="2.7" fill="#cfeeff" stroke="#8f0c33" stroke-width="1"/>
+
+  <!-- cockpit canopy -->
+  <path d="M 76 26.5 Q 80 15.5 90 17 Q 98.5 18.5 101.5 27.5 C 93 26 84.5 25.8 76 26.5 Z"
+        fill="url(#plGlass)" stroke="#8f0c33" stroke-width="1.2"/>
+
+  <!-- near wing (front, sweeping down-left) -->
+  <path d="M 64 35 C 57 44 46 52 33.5 56.5 C 28.5 58.2 25 54.5 27 50.5 C 33 44 45 37.5 57 33.5 Z"
+        fill="url(#plWing)"/>
+  <path d="M 36.5 53.6 C 32.6 55.6 29.6 56.4 27.8 51.9 C 29.6 49.6 32 47.7 34.8 45.9 C 36.2 48.6 36.8 51 36.5 53.6 Z"
+        fill="#f4f6f8" opacity="0.9"/>
+
+  <!-- propeller disc + gold hub -->
+  <ellipse cx="120.5" cy="36" rx="2.8" ry="16" fill="#ffffff" opacity="0.32"/>
+  <path d="M 112.5 32.2 L 120.5 36 L 112.5 39.8 Z" fill="#f7c948"/>
+</svg>
