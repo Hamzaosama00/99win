@@ -1,13 +1,5 @@
-import { PrismaClient } from '@prisma/client'
+import { createFirebaseStore } from './firebase-store'
+import { firebaseTransport } from './firebase-transport'
 
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined
-}
-
-export const db =
-  globalForPrisma.prisma ??
-  new PrismaClient({
-    log: ['query'],
-  })
-
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db
+// Initialization is lazy: builds do not access Firebase or require credentials.
+export const db = createFirebaseStore(firebaseTransport)

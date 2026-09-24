@@ -21,7 +21,7 @@ export async function POST(req: Request) {
     const { amount, account, method } = await req.json()
     const amt = Number(amount)
 
-    if (!amt || amt < MIN_WITHDRAW) {
+    if (!Number.isFinite(amt) || amt < MIN_WITHDRAW) {
       return NextResponse.json(
         { error: `Minimum withdrawal is PKR ${MIN_WITHDRAW}.` },
         { status: 400 }
@@ -34,32 +34,27 @@ export async function POST(req: Request) {
       )
     }
 
-    const user = await db.user.findUnique({ where: { id: payload.uid } })
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    if (user.balance < amt) {
-      return NextResponse.json(
-        { error: 'Insufficient balance.' },
-        { status: 400 }
-      )
-    }
-
-    // Hold funds immediately (server-side financial operation)
-    const user2 = await db.user.update({
-      where: { id: user.id },
-      data: { balance: { decrement: amt } },
-    })
-
-    const tx = await db.transaction.create({
-      data: {
-        userId: user.id,
-        type: 'WITHDRAW',
-        amount: amt,
-        status: 'PENDING',
-        method: method || 'Easypaisa',
-        account: String(account),
-      },
+    // The balance check, hold and ledger record commit together, including
+    // when two Vercel instances receive withdrawals at the same time.
+    const { user2, tx } = await db.$transaction(async (database) => {
+      const user = await database.user.findUnique({ where: { id: payload.uid } })
+      if (!user) throw new Error('Unauthorized')
+      if (user.balance < amt) throw new Error('Insufficient balance.')
+      const user2 = await database.user.update({
+        where: { id: payload.uid },
+        data: { balance: { decrement: amt } },
+      })
+      const tx = await database.transaction.create({
+        data: {
+          userId: user.id,
+          type: 'WITHDRAW',
+          amount: amt,
+          status: 'PENDING',
+          method: method || 'Easypaisa',
+          account: String(account),
+        },
+      })
+      return { user2, tx }
     })
 
     return NextResponse.json({
@@ -74,6 +69,9 @@ export async function POST(req: Request) {
       message: 'Withdrawal requested! Payout after admin approval (usually 10–30 minutes).',
     })
   } catch (e) {
+    if (e instanceof Error && ['Unauthorized', 'Insufficient balance.'].includes(e.message)) {
+      return NextResponse.json({ error: e.message }, { status: e.message === 'Unauthorized' ? 401 : 400 })
+    }
     console.error('withdraw error', e)
     return NextResponse.json({ error: 'Withdrawal failed.' }, { status: 500 })
   }
