@@ -39,10 +39,56 @@ async function cleanupStaleBets() {
   }
 }
 
-const httpServer = createServer()
+// Render exposes a single public HTTP port, so Socket.IO and Signals share it.
+let engine: GameEngine
+const httpServer = createServer((req, res) => {
+  const sendJson = (status: number, data: unknown) => {
+    res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+    res.end(JSON.stringify(data))
+  }
+  if (!engine) return sendJson(503, { error: 'Service starting' })
+  const url = new URL(req.url || '/', 'http://localhost')
+  if (url.pathname === '/healthz') {
+    return sendJson(200, { ok: true, roundId: engine.roundId, phase: engine.phase })
+  }
+  if (url.pathname === '/engine-state') {
+    return sendJson(200, {
+      serverTime: Date.now(), roundId: engine.roundId, phase: engine.phase,
+      endsAt: engine.phaseEndsAt, startedAt: engine.startedAt,
+      history: engine.history.slice(0, 25),
+    })
+  }
+  if (url.pathname === '/signal') {
+    // Identity is obtained only from a signed token; never trust a raw uid param.
+    const token = url.searchParams.get('token') || ''
+    const payload = token ? verifyToken(token) : null
+    const uid = payload?.uid ?? null
+    if (!uid) return sendJson(401, { error: 'Unauthorized' })
+    const rawRounds = Number(url.searchParams.get('rounds') ?? 14)
+    const past = Number.isFinite(rawRounds) ? Math.min(Math.max(rawRounds, 4), 30) : 14
+    const first = engine.roundId - past
+    const rounds = []
+    for (let r = first; r <= engine.roundId + 1; r++) {
+      const sig = signalFor(r, uid)
+      const relation = r < engine.roundId ? 'PAST' : r === engine.roundId ? 'LIVE' : 'NEXT'
+      const hit = relation !== 'PAST' ? null
+        : sig.verdict === 'SKIP' ? sig.eff < 1.35
+        : sig.target !== null && sig.eff >= sig.target
+      rounds.push({ ...sig, relation, hit })
+    }
+    return sendJson(200, {
+      serverTime: Date.now(),
+      engine: {
+        roundId: engine.roundId, phase: engine.phase,
+        endsAt: engine.phaseEndsAt, startedAt: engine.startedAt,
+      },
+      history: engine.history.slice(0, 25), rounds,
+    })
+  }
+  return sendJson(404, { error: 'Not found' })
+})
 const io = new Server(httpServer, {
-  // DO NOT change the path — Caddy forwards via XTransformPort
-  path: '/',
+  path: '/socket.io/',
   cors: { origin: '*', methods: ['GET', 'POST'] },
   pingTimeout: 60000,
   pingInterval: 25000,
@@ -56,8 +102,6 @@ io.use((socket, next) => {
   socket.data.role = payload?.role ?? 'GUEST'
   next()
 })
-
-let engine: GameEngine
 
 io.on('connection', async (socket) => {
   const uid = socket.data.uid as string | null
@@ -135,74 +179,11 @@ io.on('connection', async (socket) => {
   socket.on('disconnect', () => {})
 })
 
-// ---- internal Signals HTTP API (localhost only — proxied by Next.js /api/signals) ----
-if (typeof Bun !== 'undefined') {
-  Bun.serve({
-    port: CONFIG.SIGNALS_PORT,
-    hostname: CONFIG.SIGNALS_HOST,
-    fetch(req) {
-      if (!engine) return new Response('Service starting', { status: 503 })
-      const url = new URL(req.url)
-
-      if (url.pathname === '/engine-state') {
-        return Response.json({
-          serverTime: Date.now(),
-          roundId: engine.roundId,
-          phase: engine.phase,
-          endsAt: engine.phaseEndsAt,
-          startedAt: engine.startedAt,
-          history: engine.history.slice(0, 25),
-        })
-      }
-
-      if (url.pathname === '/signal') {
-        // identity comes from the signed token — never trust a raw uid param
-        // (mandatory once the signals host is bound publicly)
-        const token = url.searchParams.get('token') || ''
-        const payload = token ? verifyToken(token) : null
-        const uid = payload?.uid ?? null
-        if (!uid) return Response.json({ error: 'Unauthorized' }, { status: 401 })
-        const past = Math.min(Math.max(Number(url.searchParams.get('rounds') ?? 14), 4), 30)
-        const first = engine.roundId - past
-        const rounds = []
-        for (let r = first; r <= engine.roundId + 1; r++) {
-          const sig = signalFor(r, uid)
-          const relation =
-            r < engine.roundId ? 'PAST' : r === engine.roundId ? 'LIVE' : 'NEXT'
-          // accuracy check: a BET signal hits when the round reached its target,
-          // a SKIP signal is correct when the round crashed below 1.35x
-          const hit =
-            relation !== 'PAST'
-              ? null
-              : sig.verdict === 'SKIP'
-                ? sig.eff < 1.35
-                : sig.target !== null && sig.eff >= sig.target
-          rounds.push({ ...sig, relation, hit })
-        }
-        return Response.json({
-          serverTime: Date.now(),
-          engine: {
-            roundId: engine.roundId,
-            phase: engine.phase,
-            endsAt: engine.phaseEndsAt,
-            startedAt: engine.startedAt,
-          },
-          history: engine.history.slice(0, 25),
-          rounds,
-        })
-      }
-
-      return new Response('Not found', { status: 404 })
-    },
-  })
-  console.log(`[99win] signals api listening on 127.0.0.1:${CONFIG.SIGNALS_PORT}`)
-}
-
 // ---- boot ----
 async function main() {
   await cleanupStaleBets()
   engine = new GameEngine(io, db)
-  httpServer.listen(CONFIG.PORT, () => {
+  httpServer.listen(CONFIG.PORT, '0.0.0.0', () => {
     console.log(`[99win] game service running on port ${CONFIG.PORT}`)
   })
 }

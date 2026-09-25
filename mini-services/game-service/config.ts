@@ -9,8 +9,6 @@
  */
 export const CONFIG = {
   PORT: Number(process.env.GAME_PORT) || 3003,
-  SIGNALS_PORT: Number(process.env.SIGNALS_PORT) || 3004, // internal HTTP API for the Signals app (Next.js proxies)
-  SIGNALS_HOST: process.env.SIGNALS_HOST || '127.0.0.1', // bind 0.0.0.0 when hosted (Render/Railway)
 
   // ---- Probability engine ----
   HOUSE_EDGE: 0.04, // 4% house edge → RTP ≈ 96%
