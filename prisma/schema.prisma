@@ -14,6 +14,9 @@ model User {
   name          String
   password      String // scrypt hash (salt:hash)
   role          String        @default("USER") // USER | ADMIN
+  status        String        @default("ACTIVE") // ACTIVE | BLOCKED | BANNED | DELETED
+  lastSeenAt    DateTime?
+  sessionRevokedAt DateTime?
   balance       Float         @default(0)
   totalDeposit  Float         @default(0)
   totalWin      Float         @default(0)

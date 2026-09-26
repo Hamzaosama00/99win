@@ -12,6 +12,7 @@ import {
 export type Phase = 'WAITING' | 'FLYING' | 'ENDED'
 
 export interface Entry {
+  slot?: number
   betId: string
   userId: string
   name: string
@@ -74,6 +75,7 @@ export class GameEngine {
   leaderboard: LeaderRow[] = []
   chatHistory: ChatMsg[] = []
   lastCrash: number | null = null
+  private pendingBets = new Set<string>()
   private fakeOnline = CONFIG.FAKE_PRESENCE_BASE
   private lastFeedAt = 0
   private chatLastAt = new Map<string, number>()
@@ -242,6 +244,8 @@ export class GameEngine {
         })
         this.io.in(`user:${e.userId}`).emit('game:user_cashed_out', {
           roundId: this.roundId,
+          betId: e.betId,
+          slot: e.slot ?? 0,
           multiplier: m,
           win,
           balance: Math.round(u.balance * 100) / 100,
@@ -278,6 +282,8 @@ export class GameEngine {
         })
         this.io.in(`user:${e.userId}`).emit('game:user_crashed', {
           roundId: this.roundId,
+          betId: e.betId,
+          slot: e.slot ?? 0,
           crashPoint: crashM,
           loss: e.amount,
         })
@@ -301,7 +307,8 @@ export class GameEngine {
   // ---------------- API for socket handlers ----------------
 
   stateFor(uid: string | null) {
-    const myBet = uid ? this.entries.get(uid) : undefined
+    const myBet = uid ? this.entries.get(`${uid}:0`) : undefined
+    const myBets = Array.from(this.entries.values()).filter(e => !e.isBot && e.userId === uid).map(e => ({ betId: e.betId, slot: e.slot ?? 0, amount: e.amount, autoCashout: e.autoCashout, status: e.status, cashoutM: e.cashoutM, win: e.win }))
     return {
       serverTime: Date.now(),
       onlineCount: this.fakeOnline + this.io.sockets.sockets.size,
@@ -313,6 +320,7 @@ export class GameEngine {
       history: this.history.slice(0, 25),
       bets: Array.from(this.entries.values()).map(publicEntry),
       leaderboard: this.leaderboard,
+      myBets,
       myBet: myBet
         ? {
             betId: myBet.betId,
@@ -330,12 +338,15 @@ export class GameEngine {
     uid: string,
     name: string,
     amount: number,
-    autoCashout: number | null
+    autoCashout: number | null,
+    slot = 0
   ): Promise<{ ok: boolean; error?: string; betId?: string; balance?: number }> {
     if (this.phase !== 'WAITING') {
       return { ok: false, error: 'Betting is closed — wait for the next round.' }
     }
-    if (this.entries.has(uid)) {
+    if (slot !== 0 && slot !== 1) return { ok: false, error: 'Invalid bet panel.' }
+    const key = `${uid}:${slot}`
+    if (this.entries.has(key) || this.pendingBets.has(key)) {
       return { ok: false, error: 'You already have a bet this round.' }
     }
     if (!Number.isFinite(amount) || !Number.isInteger(amount) ||
@@ -350,8 +361,13 @@ export class GameEngine {
     // Deterministic per-user crash point (HMAC of roundId + uid) — the
     // Signals service derives the exact same value, so signals are accurate.
     const personalCrash = crashForRound(this.roundId, uid)
+    const roundId = this.roundId
+    this.pendingBets.add(key)
     try {
       const res = await this.db.$transaction(async (tx) => {
+        if (this.phase !== 'WAITING' || this.roundId !== roundId) throw new Error('Betting closed.')
+        const account = await tx.user.findUnique({ where: { id: uid } })
+        if (!account || account.status !== 'ACTIVE') throw new Error('Account unavailable.')
         const r = await tx.user.updateMany({
           where: { id: uid, balance: { gte: amount } },
           data: { balance: { decrement: amount } },
@@ -360,7 +376,7 @@ export class GameEngine {
         const bet = await tx.bet.create({
           data: {
             userId: uid,
-            roundId: this.roundId,
+            roundId,
             amount,
             crashPoint: personalCrash,
             status: 'ACTIVE',
@@ -374,7 +390,15 @@ export class GameEngine {
         return { ok: false, error: 'Insufficient balance.' }
       }
 
+      if (this.phase !== 'WAITING' || this.roundId !== roundId) {
+        await this.db.$transaction([
+          this.db.bet.update({ where: { id: res.bet.id, status: 'ACTIVE' }, data: { status: 'CANCELLED' } }),
+          this.db.user.update({ where: { id: uid }, data: { balance: { increment: amount } } }),
+        ])
+        return { ok: false, error: 'Round started. Your bet was refunded.' }
+      }
       const entry: Entry = {
+        slot,
         betId: res.bet.id,
         userId: uid,
         name,
@@ -387,7 +411,7 @@ export class GameEngine {
         cashoutM: null,
         win: null,
       }
-      this.entries.set(uid, entry)
+      this.entries.set(key, entry)
       this.io.emit('bets:add', publicEntry(entry))
       return {
         ok: true,
@@ -397,18 +421,21 @@ export class GameEngine {
     } catch (err) {
       console.error('[99win] placeBet error', err)
       return { ok: false, error: 'Bet failed. Try again.' }
-    }
+    } finally { this.pendingBets.delete(key) }
   }
 
-  async cancelBet(uid: string) {
+  async cancelBet(uid: string, slot = 0) {
+    if (slot !== 0 && slot !== 1) return { ok: false, error: 'Invalid bet panel.' }
     if (this.phase !== 'WAITING') {
       return { ok: false, error: 'Too late to cancel — the round has started.' }
     }
-    const e = this.entries.get(uid)
+    const e = this.entries.get(`${uid}:${slot}`)
     if (!e || e.isBot || e.status !== 'ACTIVE') {
       return { ok: false, error: 'No active bet to cancel.' }
     }
-    this.entries.delete(uid)
+    const key = `${uid}:${slot}`
+    this.pendingBets.add(key)
+    this.entries.delete(key)
     try {
       const [, u] = await this.db.$transaction([
         this.db.bet.update({ where: { id: e.betId, status: 'ACTIVE' }, data: { status: 'CANCELLED' } }),
@@ -418,16 +445,19 @@ export class GameEngine {
       return { ok: true, balance: Math.round(u.balance * 100) / 100 }
     } catch (err) {
       console.error('[99win] cancel error', err)
-      this.entries.set(uid, e)
+      this.entries.set(`${uid}:${slot}`, e)
       return { ok: false, error: 'Cancel failed. Try again.' }
+    } finally {
+      this.pendingBets.delete(key)
     }
   }
 
-  cashout(uid: string) {
+  cashout(uid: string, slot = 0) {
+    if (slot !== 0 && slot !== 1) return { ok: false, error: 'Invalid bet panel.' }
     if (this.phase !== 'FLYING') {
       return { ok: false, error: 'No flight in progress.' }
     }
-    const e = this.entries.get(uid)
+    const e = this.entries.get(`${uid}:${slot}`)
     if (!e || e.isBot || e.status !== 'ACTIVE') {
       return { ok: false, error: 'No active bet to cash out.' }
     }
