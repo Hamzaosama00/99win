@@ -25,6 +25,9 @@ export async function POST(req: Request) {
       )
     }
 
+    if (user.status !== 'ACTIVE') {
+      return NextResponse.json({ error: 'This account is ' + user.status.toLowerCase() + '. Contact support.' }, { status: 403 })
+    }
     const token = signToken(user.id, user.role)
     return NextResponse.json({ token, user: publicUser(user) })
   } catch (e) {

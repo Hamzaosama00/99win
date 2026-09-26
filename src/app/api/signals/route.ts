@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { getTokenPayload, extractToken } from '@/lib/auth'
+import { extractToken } from '@/lib/auth'
+import { getActiveSession } from '@/lib/session'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -10,7 +11,7 @@ export const dynamic = 'force-dynamic'
  * BEFORE the round starts, so the signals are mathematically accurate.
  */
 export async function GET(req: Request) {
-  const payload = getTokenPayload(req)
+  const payload = await getActiveSession(req)
   if (!payload) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

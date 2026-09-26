@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getTokenPayload } from '@/lib/auth'
+import { getActiveSession } from '@/lib/session'
 import { publicUser } from '@/lib/seed'
 import { cashbackPercent, round2 } from '@/lib/money'
 
@@ -21,7 +21,7 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const payload = getTokenPayload(req)
+  const payload = await getActiveSession(req)
   if (!payload || payload.role !== 'ADMIN') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }

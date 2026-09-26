@@ -9,6 +9,7 @@ import {
 import { CheckCircleIcon } from '@/components/game/icons'
 import { SignalsLive } from './SignalsApp'
 import { toast } from 'sonner'
+import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -31,6 +32,9 @@ export default function AdminPanel() {
   const [users, setUsers] = useState<AdminUser[]>([])
   const [deposits, setDeposits] = useState<AdminTx[]>([])
   const [withdrawals, setWithdrawals] = useState<AdminTx[]>([])
+  const [query, setQuery] = useState('')
+  const [showDeleted, setShowDeleted] = useState(false)
+  const [busyUser, setBusyUser] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
@@ -74,6 +78,18 @@ export default function AdminPanel() {
     } finally {
       setBusyId(null)
     }
+  }
+
+  async function changeUser(u: AdminUser, action: 'ban' | 'block' | 'unblock' | 'delete') {
+    if (busyUser) return
+    if (action === 'delete' && !window.confirm('Delete ' + u.name + '? Account access will be permanently removed. Financial and bet history will be retained. This cannot be undone.')) return
+    setBusyUser(u.id)
+    try {
+      await api('/api/admin/users/' + encodeURIComponent(u.id), { method: 'PATCH', body: JSON.stringify({ action }) })
+      toast.success(action === 'unblock' ? 'Account restored. The user can log in again.' : 'Account ' + (action === 'ban' ? 'banned' : action === 'block' ? 'blocked' : 'deleted') + '.')
+      await refresh()
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'Update failed.') }
+    finally { setBusyUser(null) }
   }
 
   function logout() {
@@ -333,6 +349,11 @@ export default function AdminPanel() {
 
           {/* users */}
           <TabsContent value="users" className="mt-3">
+            <div className="flex flex-wrap items-center gap-3 mb-3">
+              <Input aria-label="Search users" placeholder="Search name or phone…" value={query} onChange={e => setQuery(e.target.value)} className="max-w-xs" />
+              <label className="text-sm flex items-center gap-2"><input type="checkbox" checked={showDeleted} onChange={e => setShowDeleted(e.target.checked)} /> Show deleted accounts</label>
+              <span className="text-xs text-muted-foreground">Online = active within 60 seconds · Updates every 12 seconds</span>
+            </div>
             <Card className="border-border/70">
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
@@ -341,6 +362,9 @@ export default function AdminPanel() {
                       <TableRow>
                         <TableHead>Name</TableHead>
                         <TableHead>Phone</TableHead>
+                        <TableHead>Presence</TableHead>
+                        <TableHead>Account</TableHead>
+                        <TableHead>Actions</TableHead>
                         <TableHead className="text-right">Balance</TableHead>
                         <TableHead className="text-right">Deposits</TableHead>
                         <TableHead className="text-right">Wins</TableHead>
@@ -351,7 +375,7 @@ export default function AdminPanel() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {users.map((u) => (
+                      {users.filter(u => (showDeleted || u.status !== 'DELETED') && (u.name + ' ' + u.phone).toLowerCase().includes(query.toLowerCase())).map((u) => (
                         <TableRow key={u.id}>
                           <TableCell className="font-medium">
                             {u.name}
@@ -363,6 +387,20 @@ export default function AdminPanel() {
                           </TableCell>
                           <TableCell className="font-mono text-xs">
                             {u.phone.replace(/(\d{4})\d+(\d{3})/, '$1****$2')}
+                          </TableCell>
+                          <TableCell>
+                            <span className={u.online ? 'text-green-400' : 'text-muted-foreground'}>{u.online ? '● Online' : '○ Offline'}</span>
+                            <div className="text-[10px] text-muted-foreground whitespace-nowrap">{u.lastSeenAt ? new Date(u.lastSeenAt).toLocaleString() : 'Never active'}</div>
+                          </TableCell>
+                          <TableCell><span className={u.status === 'ACTIVE' ? 'text-green-400' : 'text-red-400'}>{u.status}</span></TableCell>
+                          <TableCell>
+                            {u.role !== 'ADMIN' && u.status !== 'DELETED' && <div className="flex gap-1">
+                              {u.status === 'ACTIVE' ? <>
+                                <Button size="sm" variant="outline" disabled={!!busyUser} onClick={() => changeUser(u, 'block')}>Block</Button>
+                                <Button size="sm" variant="outline" disabled={!!busyUser} onClick={() => changeUser(u, 'ban')}>Ban</Button>
+                              </> : <Button size="sm" variant="outline" disabled={!!busyUser} onClick={() => changeUser(u, 'unblock')}>Unblock</Button>}
+                              <Button size="sm" variant="destructive" disabled={!!busyUser} onClick={() => changeUser(u, 'delete')}>Delete</Button>
+                            </div>}
                           </TableCell>
                           <TableCell className="text-right font-tabular font-bold text-gold">
                             {formatMoney(u.balance, 2)}

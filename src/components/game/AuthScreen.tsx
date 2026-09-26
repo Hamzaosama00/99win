@@ -232,7 +232,7 @@ export default function AuthScreen() {
                     </div>
                     <div className="rounded-lg bg-gold/10 border border-gold/25 px-3 py-2 text-xs text-gold flex items-center gap-2">
                       <Zap className="h-3.5 w-3.5 shrink-0" />
-                      Get PKR 100 welcome bonus instantly on signup.
+                      Get PKR 100 welcome bonus instantly on signup. An approved deposit is required before withdrawing.
                     </div>
                     <Button
                       type="submit"

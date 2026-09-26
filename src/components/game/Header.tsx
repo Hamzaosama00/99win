@@ -3,7 +3,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   Plus, Wallet, ShieldCheck, LogOut, User as UserIcon, Wifi, WifiOff,
-  MessageCircle,
+  MessageCircle, Menu,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -33,31 +33,19 @@ export default function Header() {
   }
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border/70 bg-background/85 backdrop-blur-md">
-      <div className="max-w-6xl mx-auto px-2 sm:px-4 h-[60px] flex items-center gap-2 sm:gap-3">
+    <header className="game-header">
+      <div className="game-header-inner">
         {/* logo */}
         <button
           onClick={() => dispatch(setView('game'))}
           className="flex items-center gap-2 mr-auto group"
           aria-label="99win home"
         >
-          <img
-            src="/99win-logo.svg"
-            alt="99win logo"
-            className="h-9 w-9 rounded-xl shadow-[0_0_24px_rgba(232,17,75,0.45)] group-hover:scale-105 transition-transform"
-          />
-          <div className="leading-none text-left">
-            <span className="text-xl font-black tracking-tight">
-              99<span className="text-primary">win</span>
-            </span>
-            <span className="hidden sm:block text-[9px] text-muted-foreground tracking-[0.28em] uppercase">
-              Aviator
-            </span>
-          </div>
+          <span className="aviator-wordmark">Aviator</span>
         </button>
 
         {/* presence */}
-        <div className="hidden md:flex items-center gap-1.5 text-xs text-muted-foreground mr-1">
+        <div className="connection-status">
           {connected ? (
             <Wifi className="h-3.5 w-3.5 text-green-500" />
           ) : (
@@ -67,14 +55,14 @@ export default function Header() {
         </div>
 
         {/* balance */}
-        <div className="flex items-center h-10 rounded-xl bg-secondary border border-border pl-3 pr-1 gap-2">
+        <div className="header-wallet">
           <motion.span
             key={balance}
             initial={{ scale: 1.15 }}
             animate={{ scale: 1 }}
-            className="font-black font-tabular text-sm sm:text-base text-gold"
+            className="header-balance font-tabular"
           >
-            {formatMoney(balance, 2)}
+            {balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <small>PKR</small>
           </motion.span>
           <Button
             size="icon"
@@ -106,7 +94,7 @@ export default function Header() {
               }}
               aria-label="Menu"
             >
-              {user!.name.slice(0, 2)}
+              <Menu className="h-4 w-4 text-muted-foreground" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52">
@@ -117,6 +105,8 @@ export default function Header() {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => dispatch(openModal('deposit'))}><Plus className="h-4 w-4 mr-2" /> Deposit</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => dispatch(openModal('withdraw'))}><Wallet className="h-4 w-4 mr-2" /> Withdraw</DropdownMenuItem>
             <DropdownMenuItem onClick={() => dispatch(openModal('wallet'))}>
               <Wallet className="h-4 w-4 mr-2" /> My Wallet
             </DropdownMenuItem>

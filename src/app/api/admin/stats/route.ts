@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getTokenPayload } from '@/lib/auth'
+import { getActiveSession } from '@/lib/session'
 
 export const runtime = 'nodejs'
 
 /** GET /api/admin/stats — platform overview for the admin dashboard */
 export async function GET(req: Request) {
-  const payload = getTokenPayload(req)
+  const payload = await getActiveSession(req)
   if (!payload || payload.role !== 'ADMIN') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }

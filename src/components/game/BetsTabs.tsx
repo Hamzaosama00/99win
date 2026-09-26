@@ -48,11 +48,13 @@ export default function BetsTabs() {
       .catch(() => {})
   }, [user, lastCrash, dispatch])
 
+  const totalWin = bets.reduce((sum, b) => sum + (b.win ?? 0), 0)
+  const wonCount = bets.filter(b => b.status === 'WON').length
   const activeCount = bets.filter((b) => b.status === 'ACTIVE').length
 
   return (
-    <Card className="border-border/80">
-      <CardContent className="p-3 sm:p-4">
+    <Card className="bets-card">
+      <CardContent className="bets-content">
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList className="grid grid-cols-3 w-full mb-3">
             <TabsTrigger value="all" className="text-xs sm:text-sm">
@@ -70,11 +72,16 @@ export default function BetsTabs() {
             </TabsTrigger>
           </TabsList>
 
+          <div className="bets-summary">
+            <div><span className="summary-avatars">◉ ◉ ◉</span><strong>{totalWin.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></div>
+            <div><span>{wonCount}/{bets.length} <em>Bets</em></span><em>Total win PKR</em></div>
+            <progress value={wonCount} max={Math.max(1, bets.length)} />
+          </div>
           {/* ---- ALL BETS ---- */}
           <TabsContent value="all">
             <ScrollArea className="h-[300px] pr-2">
               <div className="space-y-1">
-                <HeaderRow cols={['Player', 'Bet', 'Mult', 'Win']} />
+                <HeaderRow cols={['Player', 'Bet PKR', 'X', 'Win PKR']} />
                 <AnimatePresence initial={false}>
                   {bets.length === 0 && (
                     <EmptyRow text="Bets appear here when the round opens…" />
@@ -86,14 +93,14 @@ export default function BetsTabs() {
                       initial={{ opacity: 0, y: -8 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0 }}
-                      className="grid grid-cols-[1fr_70px_64px_76px] items-center gap-1 rounded-lg px-2 py-1.5 bg-secondary/40 text-xs"
+                      className={cn("bet-table-row", b.status === "WON" && "bet-table-won")}
                     >
                       <div className="flex items-center gap-2 min-w-0">
                         <Avatar name={b.name} hue={b.hue} />
                         <span className="truncate font-medium">{b.name}</span>
                       </div>
                       <span className="text-right font-tabular text-muted-foreground">
-                        {formatMoney(b.amount)}
+                        {b.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                       <span className="text-center">
                         {b.status === 'WON' ? (
@@ -118,7 +125,7 @@ export default function BetsTabs() {
                               : 'text-muted-foreground/40'
                         )}
                       >
-                        {b.win != null ? formatMoney(b.win) : '—'}
+                        {b.win != null ? b.win.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
                       </span>
                     </motion.div>
                   ))}
@@ -221,6 +228,7 @@ export default function BetsTabs() {
             </ScrollArea>
           </TabsContent>
         </Tabs>
+        <div className="bets-footnote">18+ · Play responsibly <span>99WIN</span></div>
       </CardContent>
     </Card>
   )

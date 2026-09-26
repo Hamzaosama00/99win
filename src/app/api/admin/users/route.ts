@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getTokenPayload } from '@/lib/auth'
+import { getActiveSession } from '@/lib/session'
+
+import { isOnline } from '@/lib/account-access'
 
 export const runtime = 'nodejs'
 
 async function requireAdmin(req: Request) {
-  const payload = getTokenPayload(req)
+  const payload = await getActiveSession(req)
   if (!payload || payload.role !== 'ADMIN') return null
   return payload
 }
@@ -23,6 +25,8 @@ export async function GET(req: Request) {
       phone: true,
       name: true,
       role: true,
+      status: true,
+      lastSeenAt: true,
       balance: true,
       totalDeposit: true,
       totalWin: true,
@@ -40,6 +44,7 @@ export async function GET(req: Request) {
   return NextResponse.json({
     users: users.map((u) => ({
       ...u,
+      online: isOnline(u),
       betsCount: betMap.get(u.id)?._count.id ?? 0,
       wagered: betMap.get(u.id)?._sum.amount ?? 0,
       paidOut: betMap.get(u.id)?._sum.winAmount ?? 0,

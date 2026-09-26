@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Banknote, Loader2, Clock } from 'lucide-react'
 import { toast } from 'sonner'
 import {
@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAppDispatch, useAppSelector } from '@/store/store'
-import { closeModal } from '@/store/slices/uiSlice'
+import { closeModal, openModal } from '@/store/slices/uiSlice'
 import { patchWallet } from '@/store/slices/authSlice'
 import { api } from '@/lib/api'
 import { formatMoney, MIN_WITHDRAW } from '@/lib/money'
@@ -22,9 +22,19 @@ export default function WithdrawModal() {
   const [amount, setAmount] = useState<number>(500)
   const [account, setAccount] = useState('')
   const [busy, setBusy] = useState(false)
+  const [eligible, setEligible] = useState<boolean | null>(null)
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    setEligible(null)
+    api<{ eligible: boolean }>('/api/wallet/withdraw')
+      .then(data => { if (!cancelled) setEligible(data.eligible) })
+      .catch(error => { if (!cancelled) { setEligible(false); toast.error(error.message) } })
+    return () => { cancelled = true }
+  }, [open])
 
   async function submit() {
-    if (busy) return
+    if (busy || !eligible) return
     if (!amount || amount < MIN_WITHDRAW) {
       toast.error(`Minimum withdrawal is PKR ${MIN_WITHDRAW}.`)
       return
@@ -67,6 +77,13 @@ export default function WithdrawModal() {
         </DialogHeader>
 
         <div className="space-y-4">
+          <div className="rounded-xl border border-border bg-secondary p-3 text-sm text-muted-foreground">
+            At least one approved deposit is required before your first withdrawal.
+            Pending or rejected deposits do not qualify.
+            <button className="mt-2 block text-green-400 underline" onClick={() => dispatch(openModal('deposit'))}>
+              Make a deposit
+            </button>
+          </div>
           <div className="rounded-xl bg-secondary/60 border border-border p-3 flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Available balance</span>
             <span className="font-black text-gold font-tabular">
@@ -123,10 +140,10 @@ export default function WithdrawModal() {
 
           <Button
             onClick={submit}
-            disabled={busy || (user?.balance ?? 0) < amount}
+            disabled={busy || !eligible || (user?.balance ?? 0) < amount}
             className="w-full h-11 font-bold btn-shine"
           >
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Request Withdrawal'}
+            {busy || eligible === null ? <Loader2 className="h-4 w-4 animate-spin" /> : eligible ? 'Request Withdrawal' : 'Approved deposit required'}
           </Button>
         </div>
       </DialogContent>

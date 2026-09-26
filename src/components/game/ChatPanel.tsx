@@ -22,7 +22,7 @@ function MessageList() {
   }, [messages])
 
   return (
-    <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-1.5 min-h-0">
+    <div ref={scrollRef} className="chat-messages">
       {messages.map((m) =>
         m.kind === 'system' ? (
           <div key={m.id} className="text-center py-0.5">
@@ -31,9 +31,9 @@ function MessageList() {
             </span>
           </div>
         ) : (
-          <div key={m.id} className="flex gap-2 items-start">
+          <div key={m.id} className="chat-message">
             <span
-              className="mt-0.5 h-5 w-5 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0"
+              className="chat-avatar"
               style={{
                 background: `hsl(${m.hue} 55% 22%)`,
                 color: `hsl(${m.hue} 85% 68%)`,
@@ -41,14 +41,15 @@ function MessageList() {
             >
               {m.name.slice(0, 1).toUpperCase()}
             </span>
-            <div className="min-w-0 leading-snug">
+            <div className="chat-bubble">
               <span
                 className="text-[11px] font-bold mr-1.5"
                 style={{ color: `hsl(${m.hue} 85% 68%)` }}
               >
                 {m.name}
               </span>
-              <span className="text-xs text-foreground/90 break-words">{renderRichText(m.text)}</span>
+              <time className="chat-time">{new Date(m.ts).toLocaleTimeString([], { hour12: false })}</time>
+              <span className="chat-message-text">{renderRichText(m.text)}</span>
             </div>
           </div>
         )
@@ -70,17 +71,17 @@ function ChatComposer() {
   }
 
   return (
-    <form onSubmit={send} className="flex gap-2 p-3 border-t border-border">
+    <form onSubmit={send} className="chat-composer">
       <Input
         value={text}
         onChange={(e) => setText(e.target.value)}
-        placeholder={user ? 'Say something…' : 'Login to chat'}
+        placeholder={user ? 'Your message…' : 'Login to chat'}
         disabled={!user}
-        maxLength={180}
+        maxLength={160}
         className="h-9 text-xs"
       />
       <Button type="submit" size="icon" className="h-9 w-9 shrink-0" disabled={!user || !text.trim()}>
-        <Send className="h-4 w-4" />
+        <Send className="h-5 w-5" /><span className="sr-only">Send message</span>
       </Button>
     </form>
   )
@@ -88,15 +89,13 @@ function ChatComposer() {
 
 /** Desktop chat card */
 export default function ChatPanel() {
+  const online = useAppSelector(s => s.game.online)
   return (
-    <Card className="border-border/80 flex flex-col h-[420px]">
-      <CardHeader className="py-3 px-4 border-b border-border">
+    <Card className="chat-card">
+      <CardHeader className="chat-heading">
         <CardTitle className="text-sm font-bold flex items-center gap-2">
-          <MessageCircle className="h-4 w-4 text-primary" />
-          Live Chat
-          <span className="ml-auto text-[10px] font-normal text-muted-foreground">
-            500+ players online
-          </span>
+          <span className="chat-info" title="Live community chat">i</span>
+          <span className="chat-online">Online: <b>{online.toLocaleString()}</b></span>
         </CardTitle>
       </CardHeader>
       <MessageList />

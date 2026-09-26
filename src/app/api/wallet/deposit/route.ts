@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getTokenPayload } from '@/lib/auth'
+import { getActiveSession } from '@/lib/session'
 import { publicUser } from '@/lib/seed'
 import { MIN_DEPOSIT, MAX_DEPOSIT, cashbackPercent } from '@/lib/money'
 
@@ -12,7 +12,7 @@ export const runtime = 'nodejs'
  * Body: { amount, txnId, method }
  */
 export async function POST(req: Request) {
-  const payload = getTokenPayload(req)
+  const payload = await getActiveSession(req)
   if (!payload) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

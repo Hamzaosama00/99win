@@ -62,13 +62,6 @@ export default function GameCanvas() {
     let w = 0
     let h = 0
 
-    const stars = Array.from({ length: 42 }, () => ({
-      x: Math.random(),
-      y: Math.random() * 0.75,
-      r: 0.6 + Math.random() * 1.4,
-      tw: Math.random() * Math.PI * 2,
-    }))
-
     const resize = () => {
       const wrap = wrapRef.current!
       const dpr = Math.min(window.devicePixelRatio || 1, 2)
@@ -84,7 +77,7 @@ export default function GameCanvas() {
     ro.observe(wrapRef.current!)
     resize()
 
-    const yFrac = (m: number) => Math.min(0.9, Math.log(m) / Math.log(12))
+    const yFrac = (m: number) => Math.min(0.9, Math.log(m) / Math.log(3.4))
 
     // ---- plane sprite (/plane.svg) with vector fallback ----
     const planeImg = new Image()
@@ -94,7 +87,7 @@ export default function GameCanvas() {
     }
     planeImg.src = '/aviator-plane.svg'
 
-    const PLANE_W = 66
+    const PLANE_W = 138
     const PLANE_H = PLANE_W * (72 / 128) // keep viewBox aspect
 
     const drawPlaneSprite = (x: number, y: number, rot: number, alpha: number, size = PLANE_W) => {
@@ -104,7 +97,7 @@ export default function GameCanvas() {
       ctx.globalAlpha = alpha
       ctx.translate(x, y)
       ctx.rotate(rot)
-      ctx.shadowColor = 'rgba(255,138,61,0.55)'
+      ctx.shadowColor = 'transparent'
       ctx.shadowBlur = 12
       if (planeReady) {
         ctx.drawImage(planeImg, -pw / 2, -ph / 2, pw, ph)
@@ -135,45 +128,27 @@ export default function GameCanvas() {
       raf = requestAnimationFrame(draw)
       const now = performance.now()
       const phaseNow = phaseRef.current
-      const pad = 18
+      const pad = 0
 
       // ---- background ----
       ctx.clearRect(0, 0, w, h)
-      ctx.fillStyle = '#0b0e13'
+      ctx.fillStyle = '#050505'
       ctx.fillRect(0, 0, w, h)
 
-      // grid
-      ctx.strokeStyle = 'rgba(255,255,255,0.045)'
-      ctx.lineWidth = 1
-      const grid = 44
-      const shift = phaseNow === 'FLYING' ? ((now * 0.008) % grid) : 0
-      for (let x = -shift; x < w + grid; x += grid) {
-        ctx.beginPath()
-        ctx.moveTo(x, 0)
-        ctx.lineTo(x, h)
-        ctx.stroke()
+      // Fan rays originate at the lower-left corner, as in the reference.
+      const radius = Math.hypot(w, h) * 1.2
+      for (let i = 0; i < 24; i++) {
+        const a = -Math.PI / 2 + i * Math.PI / 48
+        ctx.beginPath(); ctx.moveTo(0, h)
+        ctx.arc(0, h, radius, a, a + Math.PI / 96)
+        ctx.closePath(); ctx.fillStyle = '#101012'; ctx.fill()
       }
-      for (let y = 0; y < h; y += grid) {
-        ctx.beginPath()
-        ctx.moveTo(0, y)
-        ctx.lineTo(w, y)
-        ctx.stroke()
-      }
-
-      // ---- stars ----
-      const flying = phaseNow === 'FLYING'
-      for (const s of stars) {
-        if (flying) s.x -= 0.00045 * (0.5 + s.r)
-        if (s.x < -0.02) s.x = 1.02
-        const a = 0.25 + 0.25 * Math.sin(now / 700 + s.tw)
-        ctx.fillStyle = `rgba(255,255,255,${a.toFixed(3)})`
-        ctx.beginPath()
-        ctx.arc(s.x * w, s.y * h, s.r, 0, Math.PI * 2)
-        ctx.fill()
-      }
+      const halo = ctx.createRadialGradient(w * .52, h * .52, 0, w * .52, h * .52, w * .55)
+      halo.addColorStop(0, 'rgba(100,40,170,.70)'); halo.addColorStop(1, 'rgba(0,0,0,0)')
+      ctx.fillStyle = halo; ctx.fillRect(0, 0, w, h)
 
       const baseX = pad
-      const baseY = h - pad - 26
+      const baseY = h - 2
 
       // runway (waiting)
       if (phaseNow === 'WAITING') {
@@ -203,7 +178,7 @@ export default function GameCanvas() {
         est = (Math.log(crashRef.current) / 0.15) * 1000
       }
 
-      const xProg = phaseNow !== 'WAITING' ? 1 - Math.exp(-est / 9000) : 0
+      const xProg = phaseNow !== 'WAITING' ? 1 - Math.exp(-est / 2850) : 0
       const mNow = phaseNow === 'FLYING' ? multiplierAt(est) : 0
 
       if (phaseNow !== 'WAITING' && est > 0) {
@@ -212,7 +187,7 @@ export default function GameCanvas() {
         const N = 48
         for (let i = 0; i <= N; i++) {
           const xi = (xProg * i) / N
-          const ti = -9 * Math.log(1 - Math.min(xi, 0.9999))
+          const ti = -2.85 * Math.log(1 - Math.min(xi, 0.9999))
           const mi = multiplierAt(ti * 1000)
           pts.push([
             pad + xi * (w - pad * 2 - 30),
@@ -221,13 +196,13 @@ export default function GameCanvas() {
         }
 
         const crashed = phaseNow === 'ENDED'
-        const strokeColor = crashed ? '#ff2d55' : '#ff8a3d'
+        const strokeColor = '#f50043'
         const glow = crashed ? 'rgba(255,45,85,0.5)' : 'rgba(255,138,61,0.45)'
 
         // area fill
         const grad = ctx.createLinearGradient(0, 0, 0, h)
-        grad.addColorStop(0, crashed ? 'rgba(255,45,85,0.28)' : 'rgba(255,138,61,0.30)')
-        grad.addColorStop(1, 'rgba(255,45,85,0)')
+        grad.addColorStop(0, 'rgba(220,0,55,0.62)')
+        grad.addColorStop(1, 'rgba(180,0,25,0.65)')
         ctx.beginPath()
         ctx.moveTo(pts[0][0], baseY)
         for (const [px, py] of pts) ctx.lineTo(px, py)
@@ -245,7 +220,7 @@ export default function GameCanvas() {
         ctx.lineJoin = 'round'
         ctx.lineCap = 'round'
         ctx.shadowColor = glow
-        ctx.shadowBlur = 14
+        ctx.shadowBlur = 0
         ctx.stroke()
         ctx.shadowBlur = 0
 
@@ -261,7 +236,7 @@ export default function GameCanvas() {
           planeY = tipY - off * 0.30
           planeAlpha = Math.max(0, 1 - off / 900)
         }
-        drawPlaneSprite(planeX, planeY, -0.52, planeAlpha)
+        drawPlaneSprite(planeX, planeY, -0.15, planeAlpha)
       } else if (phaseNow === 'WAITING') {
         // idle plane bobbing at runway start
         const bob = Math.sin(now / 380) * 4
@@ -294,7 +269,7 @@ export default function GameCanvas() {
   return (
     <div
       ref={wrapRef}
-      className="relative w-full h-[300px] sm:h-[380px] lg:h-[420px] rounded-2xl border border-border overflow-hidden select-none"
+      className="flight-canvas relative w-full overflow-hidden select-none"
       role="img"
       aria-label="Aviator multiplier flight graph"
     >
@@ -307,12 +282,13 @@ export default function GameCanvas() {
       >
         <span
           ref={multTextRef}
-          className="text-5xl sm:text-6xl lg:text-7xl font-black text-[#ff2d55] font-tabular [text-shadow:0_0_30px_rgba(255,45,85,0.55),0_2px_18px_rgba(0,0,0,0.6)]"
+          className="flight-multiplier font-tabular"
         >
           1.00x
         </span>
       </div>
 
+      {!phase && <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">Connecting to game…</div>}
       {/* waiting overlay */}
       {phase === 'WAITING' && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/35 pointer-events-none">

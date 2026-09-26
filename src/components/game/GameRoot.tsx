@@ -9,7 +9,7 @@ import { useAppDispatch, useAppSelector } from '@/store/store'
 import { authLoading, setAuth, clearAuth, patchWallet } from '@/store/slices/authSlice'
 import {
   setConnected, setPresence, applyState, gameWaiting, gameStarted, gameEnded,
-  betsAdd, betsUpdate, betsRemove, myBetResolved, setLeaderboard, betCancelled,
+  betsAdd, betsUpdate, betsRemove, betAccepted, myBetResolved, setLeaderboard, betCancelled,
 } from '@/store/slices/gameSlice'
 import { chatMessage, chatHistory } from '@/store/slices/chatSlice'
 import { PlaneTakeoffIcon } from '@/components/game/icons'
@@ -57,6 +57,20 @@ export default function GameRoot() {
       })
   }, [dispatch])
 
+  // Presence expires after 60 seconds without a visible, authenticated tab.
+  useEffect(() => {
+    if (!token) return
+    const revoke = () => { setToken(null); closeSocket(); dispatch(clearAuth()); toast.error('Session ended. Please log in again.') }
+    const heartbeat = () => {
+      if (document.visibilityState === 'visible') api('/api/auth/presence', { method: 'POST' }).catch(() => {})
+    }
+    window.addEventListener('session:revoked', revoke)
+    document.addEventListener('visibilitychange', heartbeat)
+    heartbeat()
+    const timer = setInterval(heartbeat, 20000)
+    return () => { clearInterval(timer); window.removeEventListener('session:revoked', revoke); document.removeEventListener('visibilitychange', heartbeat) }
+  }, [token, dispatch])
+
   // ---- socket lifecycle ----
   useEffect(() => {
     if (!token || !user) return
@@ -68,6 +82,7 @@ export default function GameRoot() {
     }
     const onDisconnect = () => dispatch(setConnected(false))
 
+    socket.on('account:revoked', () => window.dispatchEvent(new Event('session:revoked')))
     socket.on('connect', onConnect)
     socket.on('disconnect', onDisconnect)
     socket.on('game:state', (s: any) => {
@@ -93,26 +108,25 @@ export default function GameRoot() {
     socket.on('wallet:update', (d: any) => dispatch(patchWallet(d)))
 
     socket.on('bet:accepted', (d: any) => {
-      // my bet is already in the list via the server's `bets:add` broadcast;
-      // here we only track it as "my bet" and sync the debited balance
+      dispatch(betAccepted({ bet: { betId: d.betId, slot: d.slot ?? 0, amount: d.amount, autoCashout: d.autoCashout, status: 'ACTIVE', cashoutM: null, win: null } }))
       if (typeof d.balance === 'number')
         dispatch(patchWallet({ balance: d.balance }))
     })
     socket.on('bet:cancelled', (d: any) => {
-      dispatch(betCancelled())
+      dispatch(betCancelled(d.slot ?? 0))
       if (typeof d?.balance === 'number') dispatch(patchWallet({ balance: d.balance }))
     })
     socket.on('bet:error', (d: any) => toast.error(d?.message || 'Bet failed'))
 
     socket.on('game:user_cashed_out', (d: any) => {
-      dispatch(myBetResolved({ status: 'WON', cashoutM: d.multiplier, win: d.win }))
+      dispatch(myBetResolved({ betId: d.betId, status: 'WON', cashoutM: d.multiplier, win: d.win }))
       if (typeof d.balance === 'number') dispatch(patchWallet({ balance: d.balance }))
       toast.success(`Cashed out at ${d.multiplier.toFixed(2)}x — you won ${formatMoney(d.win, 2)}!`, {
         description: 'Winnings credited to your wallet.',
       })
     })
     socket.on('game:user_crashed', (d: any) => {
-      dispatch(myBetResolved({ status: 'LOST' }))
+      dispatch(myBetResolved({ betId: d.betId, status: 'LOST' }))
       toast.error(`Flew away at ${d.crashPoint.toFixed(2)}x — lost ${formatMoney(d.loss, 2)}`)
     })
 
@@ -139,12 +153,12 @@ export default function GameRoot() {
       closeSocket()
       dispatch(setConnected(false))
     }
-  }, [token, user, dispatch])
+  }, [token, dispatch])
 
   if (!user) return <AuthScreen />
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="aviator-app min-h-screen flex flex-col">
       <Toaster
         position="top-center"
         theme="dark"
@@ -165,25 +179,21 @@ export default function GameRoot() {
         </>
       ) : (
         <>
-          <Header />
-          <main className="flex-1 w-full max-w-6xl mx-auto px-2 sm:px-4 py-3 flex flex-col gap-3">
-            <RoundHistoryBar />
-            <div className="grid lg:grid-cols-[minmax(0,1fr)_340px] gap-3 items-start">
-              <div className="flex flex-col gap-3 min-w-0">
-                <GameCanvas />
-                <BetPanel />
-                <BetsTabs />
-              </div>
-              <div className="hidden lg:flex flex-col gap-3 sticky top-[76px]">
-                <ChatPanel />
-              </div>
-            </div>
-          </main>
+          <div className="aviator-layout">
+            <div className="aviator-header"><Header /></div>
+            <aside className="aviator-bets"><BetsTabs /></aside>
+            <main className="aviator-stage">
+              <RoundHistoryBar />
+              <GameCanvas />
+              <div className="aviator-controls"><BetPanel slot={0} /><BetPanel slot={1} /></div>
+            </main>
+            <aside className="aviator-chat"><ChatPanel /></aside>
+          </div>
           <ChatMobile />
           <DepositModal />
           <WithdrawModal />
           <WalletModal />
-          <footer className="mt-auto border-t border-border/60 py-3 text-center text-[11px] text-muted-foreground">
+          <footer className="aviator-footer">
             <span className="font-semibold text-foreground/70">99win</span> · Real-time
             crash game demo · Payments simulated for demonstration · 18+ Play responsibly
           </footer>
