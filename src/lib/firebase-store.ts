@@ -23,6 +23,7 @@ function matches(row: Row, where: Row = {}): boolean {
     if (value && typeof value === 'object') {
       return Object.entries(value).every(([operator, operand]) => {
         if (operator === 'in') return (operand as unknown[]).includes(row[key])
+        if (operator === 'gt') return row[key] > (operand as number)
         if (operator === 'gte') return row[key] >= (operand as number)
         throw new Error(`Unsupported Firebase filter: ${operator}`)
       })
@@ -35,14 +36,14 @@ function project(row: Row, select?: Row): Row {
   const result: Row = {}
   for (const [key, value] of Object.entries(row)) {
     if (select && !select[key]) continue
-    result[key] = ['createdAt', 'updatedAt', 'processedAt'].includes(key) && value
+    result[key] = ['createdAt', 'updatedAt', 'processedAt', 'lastSeenAt', 'sessionRevokedAt'].includes(key) && value
       ? new Date(value) : value
   }
   return result
 }
 
 function defaults(model: Model): Row {
-  if (model === 'user') return { role: 'USER', balance: 0, totalDeposit: 0, totalWin: 0, totalLoss: 0, cashbackEarned: 0, updatedAt: new Date().toISOString() }
+  if (model === 'user') return { role: 'USER', status: 'ACTIVE', lastSeenAt: null, sessionRevokedAt: null, balance: 0, totalDeposit: 0, totalWin: 0, totalLoss: 0, cashbackEarned: 0, updatedAt: new Date().toISOString() }
   if (model === 'bet') return { status: 'ACTIVE', cashedOutAt: null, winAmount: null }
   return { status: 'PENDING', method: null, txnId: null, account: null, note: null, processedAt: null }
 }

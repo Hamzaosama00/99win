@@ -31,6 +31,7 @@ export async function api<T = any>(
     },
   })
   const data = await res.json().catch(() => ({}))
+  if (res.status === 401 && token && typeof window !== 'undefined') window.dispatchEvent(new Event('session:revoked'))
   if (!res.ok) throw new Error((data as any).error || 'Request failed')
   return data as T
 }

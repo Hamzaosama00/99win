@@ -10,7 +10,7 @@ export interface GameState {
   startedAt: number | null
   history: number[]
   bets: PublicBet[]
-  myBet: MyBet | null
+  myBets: MyBet[]
   leaderboard: LeaderRow[]
   lastGlobalCrash: number | null
 }
@@ -24,7 +24,7 @@ const initialState: GameState = {
   startedAt: null,
   history: [],
   bets: [],
-  myBet: null,
+  myBets: [],
   leaderboard: [],
   lastGlobalCrash: null,
 }
@@ -51,7 +51,7 @@ const gameSlice = createSlice({
         bets: PublicBet[]
         leaderboard: LeaderRow[]
         onlineCount: number
-        myBet: MyBet | null
+        myBets: MyBet[]
       }>
     ) {
       state.roundId = action.payload.roundId
@@ -62,7 +62,7 @@ const gameSlice = createSlice({
       state.bets = action.payload.bets
       state.leaderboard = action.payload.leaderboard
       state.online = action.payload.onlineCount
-      state.myBet = action.payload.myBet
+      state.myBets = action.payload.myBets ?? []
     },
     gameWaiting(
       state,
@@ -74,7 +74,7 @@ const gameSlice = createSlice({
       state.startedAt = null
       state.history = action.payload.history
       state.bets = []
-      state.myBet = null
+      state.myBets = []
     },
     gameStarted(
       state,
@@ -122,20 +122,21 @@ const gameSlice = createSlice({
       state.bets = state.bets.filter((b) => b.betId !== action.payload)
     },
     betAccepted(state, action: PayloadAction<{ bet: MyBet }>) {
-      state.myBet = action.payload.bet
+      state.myBets = state.myBets.filter(b => b.slot !== action.payload.bet.slot)
+      state.myBets.push(action.payload.bet)
     },
-    betCancelled(state) {
-      state.myBet = null
+    betCancelled(state, action: PayloadAction<number>) {
+      state.myBets = state.myBets.filter(b => b.slot !== action.payload)
     },
     myBetResolved(
       state,
-      action: PayloadAction<{ status: 'WON' | 'LOST'; cashoutM?: number; win?: number }>
+      action: PayloadAction<{ betId: string; status: 'WON' | 'LOST'; cashoutM?: number; win?: number }>
     ) {
-      if (state.myBet) {
-        state.myBet.status = action.payload.status
-        if (action.payload.cashoutM != null)
-          state.myBet.cashoutM = action.payload.cashoutM
-        if (action.payload.win != null) state.myBet.win = action.payload.win
+      const bet = state.myBets.find(b => b.betId === action.payload.betId)
+      if (bet) {
+        bet.status = action.payload.status
+        if (action.payload.cashoutM != null) bet.cashoutM = action.payload.cashoutM
+        if (action.payload.win != null) bet.win = action.payload.win
       }
     },
     setLeaderboard(state, action: PayloadAction<LeaderRow[]>) {

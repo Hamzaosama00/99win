@@ -27,6 +27,7 @@ export interface PublicBet {
 }
 
 export interface MyBet {
+  slot: number
   betId: string
   amount: number
   autoCashout: number | null
@@ -77,6 +78,9 @@ export interface BetRow {
 }
 
 export interface AdminUser {
+  status: string
+  online: boolean
+  lastSeenAt: string | null
   id: string
   phone: string
   name: string
