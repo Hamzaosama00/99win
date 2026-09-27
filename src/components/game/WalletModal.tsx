@@ -20,6 +20,7 @@ function statusBadge(s: string) {
     case 'APPROVED':
     case 'COMPLETED':
       return 'bg-green-600/15 text-green-500 border-green-600/30'
+    case 'REVERSED':
     case 'REJECTED':
       return 'bg-destructive/15 text-destructive border-destructive/30'
     default:
@@ -139,6 +140,8 @@ export default function WalletModal() {
                           ? 'Withdrawal'
                           : t.type === 'CASHBACK'
                             ? 'Cashback'
+                            : t.type === 'REVERSAL'
+                              ? 'Deposit reversal'
                             : 'Bonus'}
                     </span>
                     <span
@@ -182,3 +185,4 @@ export default function WalletModal() {
     </Dialog>
   )
 }
+

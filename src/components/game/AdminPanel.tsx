@@ -7,6 +7,7 @@ import {
   Check, X, RefreshCcw, Plane, Loader2, Radar, Smartphone,
 } from 'lucide-react'
 import { CheckCircleIcon } from '@/components/game/icons'
+import AdminTransactions from './AdminTransactions'
 import { SignalsLive } from './SignalsApp'
 import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
@@ -247,8 +248,9 @@ export default function AdminPanel() {
           ))}
         </div>
 
-        <Tabs defaultValue="deposits">
-          <TabsList className="grid grid-cols-4 w-full max-w-2xl">
+        <Tabs defaultValue="transactions">
+          <TabsList className="grid grid-cols-2 sm:grid-cols-5 h-auto w-full max-w-3xl">
+            <TabsTrigger value="transactions">All Transactions</TabsTrigger>
             <TabsTrigger value="deposits">
               Deposits
               {(stats?.pendingDeposits ?? 0) > 0 && (
@@ -272,6 +274,7 @@ export default function AdminPanel() {
             </TabsTrigger>
           </TabsList>
 
+          <TabsContent value="transactions" className="mt-3"><AdminTransactions /></TabsContent>
           {/* deposits */}
           <TabsContent value="deposits" className="mt-3">
             <div className="space-y-2 min-h-[200px]">
@@ -436,3 +439,4 @@ export default function AdminPanel() {
     </div>
   )
 }
+
