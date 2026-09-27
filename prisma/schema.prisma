@@ -41,6 +41,12 @@ model Transaction {
   account     String? // withdrawal destination account
   note        String?
   createdAt   DateTime  @default(now())
+  relatedTransactionId String?
+  cashbackAmount Float?
+  reviewedBy String?
+  reversedBy String?
+  reversalReason String?
+  reversedAt DateTime?
   processedAt DateTime?
 
   @@index([userId, createdAt])

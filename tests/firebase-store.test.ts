@@ -178,3 +178,87 @@ test('admin queries support filters, sorting, selections, sums and grouping', as
   assert.deepEqual(groups, [{ userId: user.id, _sum: { amount: 30, winAmount: 30 }, _count: { id: 2 } }])
   assert.deepEqual(await db.bet.aggregate({ _sum: { amount: true } }), { _sum: { amount: 30 } })
 })
+
+import { reviewTransaction } from '../src/lib/transaction-review.ts'
+import { requireApprovedDeposit } from '../src/lib/withdrawal.ts'
+
+async function reviewFixture(amount = 1000) {
+  const { db } = fixture()
+  const admin = await db.user.create({ data: { ...userData, phone: '03000000000', role: 'ADMIN' } })
+  const user = await db.user.create({ data: userData })
+  const deposit = await db.transaction.create({ data: { userId: user.id, type: 'DEPOSIT', amount, txnId: 'unique-tid' } })
+  return { db, admin, user, deposit, actor: { uid: admin.id, role: 'ADMIN', iat: Date.now() } }
+}
+
+test('approval links cashback; reversal recovers both credits and preserves an audit record', async () => {
+  const { db, user, deposit, actor } = await reviewFixture()
+  await reviewTransaction(db, actor, deposit.id, 'approve')
+  assert.equal((await db.user.findUnique({ where: { id: user.id } }))?.balance, 1250)
+  const cashback = await db.transaction.findFirst({ where: { relatedTransactionId: deposit.id, type: 'CASHBACK' } })
+  assert.equal(cashback?.amount, 150)
+  const result = await reviewTransaction(db, actor, deposit.id, 'reverse', 'TID not found in verified payment statement.')
+  assert.equal(result.recovered, 1150)
+  const updated = await db.user.findUnique({ where: { id: user.id } })
+  assert.equal(updated?.balance, 100)
+  assert.equal(updated?.totalDeposit, 0)
+  assert.equal(updated?.cashbackEarned, 0)
+  const original = await db.transaction.findUnique({ where: { id: deposit.id } })
+  assert.equal(original?.status, 'REVERSED')
+  assert.equal(original?.txnId, 'unique-tid')
+  assert.equal(original?.reversedBy, actor.uid)
+  assert.ok(original?.reversedAt instanceof Date)
+  assert.equal((await db.transaction.findUnique({ where: { id: cashback!.id } }))?.status, 'REVERSED')
+  assert.equal(await db.transaction.count({ where: { type: 'REVERSAL', relatedTransactionId: deposit.id } }), 1)
+  await assert.rejects(requireApprovedDeposit(db, user.id), /approved deposit/)
+})
+
+test('two simultaneous reversals recover the balance only once', async () => {
+  const { db, user, deposit, actor } = await reviewFixture(500)
+  await reviewTransaction(db, actor, deposit.id, 'approve')
+  const results = await Promise.allSettled([reviewTransaction(db, actor, deposit.id, 'reverse', 'Fake payment verified by admin.'), reviewTransaction(db, actor, deposit.id, 'reverse', 'Fake payment verified by admin.')])
+  assert.equal(results.filter(r => r.status === 'fulfilled').length, 1)
+  assert.equal((await db.user.findUnique({ where: { id: user.id } }))?.balance, 100)
+  assert.equal(await db.transaction.count({ where: { type: 'REVERSAL' } }), 1)
+})
+
+test('spent balance causes a full rollback with no partial reversal', async () => {
+  const { db, user, deposit, actor } = await reviewFixture()
+  await reviewTransaction(db, actor, deposit.id, 'approve')
+  await db.user.update({ where: { id: user.id }, data: { balance: 10 } })
+  await assert.rejects(reviewTransaction(db, actor, deposit.id, 'reverse', 'Fake payment verified by admin.'), /Insufficient wallet balance/)
+  assert.equal((await db.user.findUnique({ where: { id: user.id } }))?.balance, 10)
+  assert.equal((await db.transaction.findUnique({ where: { id: deposit.id } }))?.status, 'APPROVED')
+  assert.equal((await db.transaction.findFirst({ where: { relatedTransactionId: deposit.id } }))?.status, 'APPROVED')
+  assert.equal(await db.transaction.count({ where: { type: 'REVERSAL' } }), 0)
+})
+
+test('legacy cashback requires explicit matching selection; wrong-user records are rejected', async () => {
+  const { db, user, deposit, actor, admin } = await reviewFixture()
+  await db.transaction.update({ where: { id: deposit.id }, data: { status: 'APPROVED' } })
+  await db.user.update({ where: { id: user.id }, data: { balance: 1250, totalDeposit: 1000, cashbackEarned: 150 } })
+  const wrong = await db.transaction.create({ data: { userId: admin.id, type: 'CASHBACK', amount: 150, status: 'APPROVED' } })
+  const correct = await db.transaction.create({ data: { userId: user.id, type: 'CASHBACK', amount: 150, status: 'APPROVED' } })
+  await assert.rejects(reviewTransaction(db, actor, deposit.id, 'reverse', 'Verified fake TID on statement.'), /older deposit/)
+  await assert.rejects(reviewTransaction(db, actor, deposit.id, 'reverse', 'Verified fake TID on statement.', wrong.id), /does not match/)
+  await reviewTransaction(db, actor, deposit.id, 'reverse', 'Verified fake TID on statement.', correct.id)
+  assert.equal((await db.user.findUnique({ where: { id: user.id } }))?.balance, 100)
+  assert.equal((await db.transaction.findUnique({ where: { id: wrong.id } }))?.status, 'APPROVED')
+})
+
+test('reviews enforce admin access and mandatory reversal reason', async () => {
+  const { db, user, admin, deposit, actor } = await reviewFixture(500)
+  await assert.rejects(reviewTransaction(db, { ...actor, uid: user.id }, deposit.id, 'approve'), /Forbidden/)
+  await assert.rejects(reviewTransaction(db, actor, deposit.id, 'reverse', 'fake'), /reason/)
+  await db.user.update({ where: { id: admin.id }, data: { status: 'BLOCKED' } })
+  await assert.rejects(reviewTransaction(db, actor, deposit.id, 'approve'), /Forbidden/)
+})
+
+test('pending withdrawal rejection refunds once; completed withdrawals cannot be reversed', async () => {
+  const { db, user, actor } = await reviewFixture(500)
+  const withdrawal = await db.transaction.create({ data: { userId: user.id, type: 'WITHDRAW', amount: 200 } })
+  await reviewTransaction(db, actor, withdrawal.id, 'reject')
+  await assert.rejects(reviewTransaction(db, actor, withdrawal.id, 'reject'), /already/)
+  assert.equal((await db.user.findUnique({ where: { id: user.id } }))?.balance, 300)
+  const paid = await db.transaction.create({ data: { userId: user.id, type: 'WITHDRAW', amount: 200, status: 'COMPLETED' } })
+  await assert.rejects(reviewTransaction(db, actor, paid.id, 'reverse', 'Incorrect withdrawal payment.'), /Only an approved deposit/)
+})
